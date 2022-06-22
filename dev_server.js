@@ -26,7 +26,7 @@ if (fs.existsSync('package.json')) {
 
 const wss = new WebSocketServer({ port: 35789 })
 
-chokidar.watch(config.src, {
+chokidar.watch(config.watch ?? config.src, {
   awaitWriteFinish: {
     stabilityThreshold: config.watchThreshold
   }
