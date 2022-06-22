@@ -40,9 +40,10 @@ for await (const filePath of getFiles(config.src)) {
     if (!fs.existsSync(path.dirname(outPath))) {
       fs.mkdirSync(path.dirname(outPath), { recursive: true })
     }
-    fs.writeFileSync(outPath, pug.render(fs.readFileSync(filePath, 'utf-8'), {
+    fs.writeFileSync(outPath, pug.render(fs.readFileSync(filePath, 'utf-8'), Object.assign({
       filename: filePath,
       basedir: config.src,
+      self: true,
       filters: {
         styl(text, options) {
           return stylus.render(text, {
@@ -51,7 +52,7 @@ for await (const filePath of getFiles(config.src)) {
           })
         }
       }
-    }), 'utf-8')
+    }, config.pugLocals)), 'utf-8')
   } else if (path.extname(filePath) === '.styl') {
     const outPath = path.join(config.output, path.relative(config.src, filePath.slice(0, -4) + 'css'))
     if (!fs.existsSync(path.dirname(outPath))) {

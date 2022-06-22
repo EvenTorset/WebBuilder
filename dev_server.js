@@ -178,9 +178,10 @@ const server = http.createServer(async (req, res) => {
     if (fs.existsSync(afp)) {
       sendFile(req, res, afp)
     } else if (afp.endsWith('.html') && fs.existsSync(afp.slice(0, -5) + '.pug')) {
-      sendFile(req, res, addReloadClient(pug.render(fs.readFileSync(afp.slice(0, -5) + '.pug', 'utf-8'), {
+      sendFile(req, res, addReloadClient(pug.render(fs.readFileSync(afp.slice(0, -5) + '.pug', 'utf-8'), Object.assign({
         filename: filePath,
         basedir: config.src,
+        self: true,
         filters: {
           styl(text, options) {
             return stylus.render(text, {
@@ -188,7 +189,7 @@ const server = http.createServer(async (req, res) => {
             })
           }
         }
-      })), 'text/html')
+      }, config.pugLocals))), 'text/html')
     } else if (afp.endsWith('.css') && fs.existsSync(afp.slice(0, -4) + '.styl')) {
       sendFile(req, res, stylus.render(fs.readFileSync(afp.slice(0, -4) + '.styl', 'utf-8'), {
         filename: filePath
