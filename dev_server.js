@@ -170,7 +170,9 @@ const server = http.createServer(async (req, res) => {
     afp = path.join(afp, 'index.html')
   } else if (!fs.existsSync(afp) && fs.existsSync(afp + '.html')) {
     afp += '.html'
-  } else if (config.cloudflare_spa_router && !fs.existsSync(afp) && !(afp.endsWith('.css') && fs.existsSync(afp.slice(0, -4) + '.styl')) && !(afp.endsWith('.html') && fs.existsSync(afp.slice(0, -5) + '.pug'))) {
+  }
+
+  if (config.cloudflare_spa_router && (!fs.existsSync(afp) || fs.lstatSync(afp).isDirectory()) && !(afp.endsWith('.css') && fs.existsSync(afp.slice(0, -4) + '.styl')) && !(afp.endsWith('.html') && fs.existsSync(afp.slice(0, -5) + '.pug'))) {
     afp = path.resolve(path.join(config.src, 'index.html'))
   }
 
