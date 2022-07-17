@@ -30,20 +30,12 @@ chokidar.watch(config.watch ?? config.src, {
   awaitWriteFinish: {
     stabilityThreshold: config.watchThreshold
   }
-}).on('all', async (evt, path) => {
-  if (path.match(/\.(css|styl)$/)) {
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send('reload css')
-      }
-    })
-  } else {
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send('reload')
-      }
-    })
-  }
+}).on('all', async (evt, filePath) => {
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send('/' + path.relative(config.src, path.resolve(filePath)).replace(/\\/g, '/').replace(/\.(?:styl|pug)$/, m => m === '.styl' ? '.css' : '.html'))
+    }
+  })
 })
 
 function addReloadClient(html) {
@@ -68,6 +60,15 @@ function handleRange(req, res, size) {
     return { start, end, err: true }
   }
   return { start, end, err: false }
+}
+
+function preprocessJS(s) {
+  return s.replace(/__styl__\?\.\(\s*\/\*((?:\*(?!\/)|[^\*])+)\*\/\s*\)\s*\?\?\s*(?:''|"")/g, (m, filePath) => {
+    return `'${stylus.render(fs.readFileSync(path.resolve(path.join(config.src, filePath)), 'utf-8'), {
+      filename: filePath,
+      compress: true
+    }).replace(/'/g, '\\\'')}'`
+  })
 }
 
 async function sendFile(req, res, file, type) {
@@ -177,7 +178,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    if (fs.existsSync(afp)) {
+    if ((afp.endsWith('.js') || afp.endsWith('.mjs')) && fs.existsSync(afp)) {
+      sendFile(req, res, preprocessJS(fs.readFileSync(afp, 'utf-8')), 'text/javascript')
+    } else if (fs.existsSync(afp)) {
       sendFile(req, res, afp)
     } else if (afp.endsWith('.html') && fs.existsSync(afp.slice(0, -5) + '.pug')) {
       sendFile(req, res, addReloadClient(pug.render(fs.readFileSync(afp.slice(0, -5) + '.pug', 'utf-8'), Object.assign({
