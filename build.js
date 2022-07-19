@@ -30,15 +30,6 @@ async function* getFiles(dir) {
   }
 }
 
-function preprocessJS(s) {
-  return s.replace(/__styl__\?\.\(\s*\/\*((?:\*(?!\/)|[^\*])+)\*\/\s*\)\s*\?\?\s*(?:''|"")/g, (m, filePath) => {
-    return `'${stylus.render(fs.readFileSync(path.resolve(path.join(config.src, filePath)), 'utf-8'), {
-      filename: filePath,
-      compress: true
-    }).replace(/'/g, '\\\'')}'`
-  })
-}
-
 if (fs.existsSync(config.output) && !fs.lstatSync(config.output).isDirectory()) {
   throw 'Output path is not a directory'
 }
@@ -85,13 +76,7 @@ for await (const filePath of getFiles(config.src)) {
       },
       module: true
     }, typeof config.uglify === 'object' ? config.uglify : {})
-    fs.writeFileSync(outPath, (await minify(preprocessJS(fs.readFileSync(filePath, 'utf-8')), options)).code, 'utf-8')
-  } else if (path.extname(filePath) === '.js') {
-    const outPath = path.join(config.output, path.relative(config.src, filePath))
-    if (!fs.existsSync(path.dirname(outPath))) {
-      fs.mkdirSync(path.dirname(outPath), { recursive: true })
-    }
-    fs.writeFileSync(outPath, preprocessJS(fs.readFileSync(filePath, 'utf-8')), 'utf-8')
+    fs.writeFileSync(outPath, (await minify(fs.readFileSync(filePath, 'utf-8'), options)).code, 'utf-8')
   } else if (!config.keepJSON && path.extname(filePath) === '.json') {
     const outPath = path.join(config.output, path.relative(config.src, filePath))
     if (!fs.existsSync(path.dirname(outPath))) {
