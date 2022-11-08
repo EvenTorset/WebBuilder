@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import fs from 'fs'
-import path from 'path'
-import http from 'http'
-import stream from 'stream'
-import { fileURLToPath } from 'url'
+import fs from 'node:fs'
+import path from 'node:path'
+import http from 'node:http'
+import stream from 'node:stream'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import WebSocket, { WebSocketServer } from 'ws'
 import pug from 'pug'
@@ -25,6 +25,13 @@ if (fs.existsSync('package.json')) {
 }
 
 const wss = new WebSocketServer({ port: 35789 })
+
+let jsConfig
+if (fs.existsSync('./webbuilder.config.js')) {
+  jsConfig = (await import(pathToFileURL(path.resolve('./webbuilder.config.js')))).default
+}
+
+const reWinDirSep = /\\/g
 
 chokidar.watch(config.watch ?? config.src, {
   awaitWriteFinish: {
@@ -143,6 +150,37 @@ function printServerReadyMessage() {
   console.log(`Dev server running on http://localhost:${config.port}/`)
 }
 
+function customMatch(fileName) {
+  if (jsConfig === undefined || !('devMatch' in jsConfig)) {
+    return false
+  } else if (typeof jsConfig.devMatch === 'boolean') {
+    return jsConfig.devMatch
+  } else if (typeof jsConfig.devMatch === 'function') {
+    return jsConfig.devMatch(fileName)
+  } else if (typeof jsConfig.devMatch === 'string') {
+    return fileName.endsWith(jsConfig.devMatch)
+  } else if (Symbol.iterator in jsConfig.devMatch) {
+    for (const test of jsConfig.devMatch) {
+      if (typeof test === 'string') {
+        if (fileName.endsWith(test)) {
+          return true
+        } else {
+          continue
+        }
+      } else if (Symbol.match in test) {
+        if (!!fileName.match(test)) {
+          return true
+        } else {
+          continue
+        }
+      }
+    }
+    return false
+  } else if (Symbol.match in jsConfig.devMatch) {
+    return !!fileName.match(jsConfig.devMatch)
+  }
+}
+
 let errored = 0
 const server = http.createServer(async (req, res) => {
   if (errored > 0 && Date.now() - errored > 1000) {
@@ -165,22 +203,24 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  let afp = path.resolve(path.join(config.src, filePath))
-  if (fs.existsSync(afp) && fs.lstatSync(afp).isDirectory()) {
-    afp = path.join(afp, 'index.html')
-  } else if (!fs.existsSync(afp) && fs.existsSync(afp + '.html')) {
-    afp += '.html'
+  let fp = path.join(config.src, filePath).replace(reWinDirSep, '/')
+  if (fs.existsSync(fp) && fs.lstatSync(fp).isDirectory()) {
+    fp = path.join(fp, 'index.html').replace(reWinDirSep, '/')
+  } else if (!fs.existsSync(fp) && fs.existsSync(fp + '.html')) {
+    fp += '.html'
   }
 
-  if (config.cloudflare_spa_router && (!fs.existsSync(afp) || fs.lstatSync(afp).isDirectory()) && !(afp.endsWith('.css') && fs.existsSync(afp.slice(0, -4) + '.styl')) && !(afp.endsWith('.html') && fs.existsSync(afp.slice(0, -5) + '.pug'))) {
-    afp = path.resolve(path.join(config.src, 'index.html'))
+  if (config.cloudflare_spa_router && (!fs.existsSync(fp) || fs.lstatSync(fp).isDirectory()) && !(fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) && !(fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug'))) {
+    fp = path.join(config.src, 'index.html').replace(reWinDirSep, '/')
   }
 
   try {
-    if (fs.existsSync(afp)) {
-      sendFile(req, res, afp)
-    } else if (afp.endsWith('.html') && fs.existsSync(afp.slice(0, -5) + '.pug')) {
-      sendFile(req, res, addReloadClient(pug.render(fs.readFileSync(afp.slice(0, -5) + '.pug', 'utf-8'), Object.assign({
+    if (customMatch(fp)) {
+      sendFile(req, res, ...(await jsConfig.devHandle(fp, config)))
+    } else if (fs.existsSync(fp)) {
+      sendFile(req, res, fp)
+    } else if (fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug')) {
+      sendFile(req, res, addReloadClient(pug.render(fs.readFileSync(fp.slice(0, -5) + '.pug', 'utf-8'), Object.assign({
         filename: filePath,
         basedir: config.src,
         self: true,
@@ -192,16 +232,22 @@ const server = http.createServer(async (req, res) => {
           }
         }
       }, config.pugLocals))), 'text/html')
-    } else if (afp.endsWith('.css') && fs.existsSync(afp.slice(0, -4) + '.styl')) {
-      sendFile(req, res, stylus.render(fs.readFileSync(afp.slice(0, -4) + '.styl', 'utf-8'), {
-        filename: filePath
+    } else if (fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) {
+      const sfp = fp.slice(0, -4) + '.styl'
+      sendFile(req, res, stylus.render(fs.readFileSync(sfp, 'utf-8'), {
+        filename: filePath,
+        paths: [
+          path.resolve(path.dirname(sfp)),
+          path.resolve('.'),
+          ...(config.stylusPaths ?? [])
+        ]
       }), 'text/css')
     } else {
       res.writeHead(404)
       res.end()
     }
   } catch (err) {
-    if (afp.endsWith('.html')) {
+    if (fp.endsWith('.html')) {
       const errHtml = `
         <body style="color:#ddd;background-color:#101010;margin:0;padding:60px;min-height:100vh;box-sizing:border-box;overflow-x:auto">
           <script type="module" src="webbuilder_reload_client.js"></script>
