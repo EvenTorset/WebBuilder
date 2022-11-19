@@ -151,34 +151,21 @@ function printServerReadyMessage() {
 }
 
 function customMatch(fileName) {
-  if (jsConfig === undefined || !('devMatch' in jsConfig)) {
+  if (jsConfig === undefined || !('serveFile' in jsConfig) || !Array.isArray(jsConfig.serveFile) || jsConfig.serveFile.length === 0) {
     return false
-  } else if (typeof jsConfig.devMatch === 'boolean') {
-    return jsConfig.devMatch
-  } else if (typeof jsConfig.devMatch === 'function') {
-    return jsConfig.devMatch(fileName)
-  } else if (typeof jsConfig.devMatch === 'string') {
-    return fileName.endsWith(jsConfig.devMatch)
-  } else if (Symbol.iterator in jsConfig.devMatch) {
-    for (const test of jsConfig.devMatch) {
-      if (typeof test === 'string') {
-        if (fileName.endsWith(test)) {
-          return true
-        } else {
-          continue
-        }
-      } else if (Symbol.match in test) {
-        if (!!fileName.match(test)) {
-          return true
-        } else {
-          continue
+  }
+  for (const [i, handler] of jsConfig.serveFile.entries()) {
+    if (typeof handler.match === 'function' && handler.match(fileName) || typeof handler.match === 'string' && fileName.endsWith(handler.match) || Symbol.match in handler.match && fileName.match(handler.match)) {
+      return i
+    } else if (Symbol.iterator in handler.match) {
+      for (const test of handler.match) {
+        if (typeof test === 'function' && test(fileName) || typeof test === 'string' && fileName.endsWith(test) || Symbol.match in test && fileName.match(test)) {
+          return i
         }
       }
     }
-    return false
-  } else if (Symbol.match in jsConfig.devMatch) {
-    return !!fileName.match(jsConfig.devMatch)
   }
+  return false
 }
 
 let errored = 0
@@ -215,8 +202,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    if (customMatch(fp)) {
-      sendFile(req, res, ...(await jsConfig.devHandle(fp, config)))
+    const customMatchIdx = customMatch(fp)
+    if (typeof customMatchIdx === 'number') {
+      sendFile(req, res, ...(await jsConfig.serveFile[customMatchIdx].process(fp, config)))
     } else if (fs.existsSync(fp)) {
       sendFile(req, res, fp)
     } else if (fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug')) {

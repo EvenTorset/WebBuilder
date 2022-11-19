@@ -39,34 +39,21 @@ async function* getFiles(dir) {
 }
 
 function customMatch(fileName) {
-  if (jsConfig === undefined || !('buildMatch' in jsConfig)) {
+  if (jsConfig === undefined || !('buildFile' in jsConfig) || !Array.isArray(jsConfig.buildFile) || jsConfig.buildFile.length === 0) {
     return false
-  } else if (typeof jsConfig.buildMatch === 'boolean') {
-    return jsConfig.buildMatch
-  } else if (typeof jsConfig.buildMatch === 'function') {
-    return jsConfig.buildMatch(fileName)
-  } else if (typeof jsConfig.buildMatch === 'string') {
-    return fileName.endsWith(jsConfig.buildMatch)
-  } else if (Symbol.iterator in jsConfig.buildMatch) {
-    for (const test of jsConfig.buildMatch) {
-      if (typeof test === 'string') {
-        if (fileName.endsWith(test)) {
-          return true
-        } else {
-          continue
-        }
-      } else if (Symbol.match in test) {
-        if (!!fileName.match(test)) {
-          return true
-        } else {
-          continue
+  }
+  for (const [i, handler] of jsConfig.buildFile.entries()) {
+    if (typeof handler.match === 'function' && handler.match(fileName) || typeof handler.match === 'string' && fileName.endsWith(handler.match) || Symbol.match in handler.match && fileName.match(handler.match)) {
+      return i
+    } else if (Symbol.iterator in handler.match) {
+      for (const test of handler.match) {
+        if (typeof test === 'function' && test(fileName) || typeof test === 'string' && fileName.endsWith(test) || Symbol.match in test && fileName.match(test)) {
+          return i
         }
       }
     }
-    return false
-  } else if (Symbol.match in jsConfig.buildMatch) {
-    return !!fileName.match(jsConfig.buildMatch)
   }
+  return false
 }
 
 function processPug(s, filePath) {
@@ -110,14 +97,19 @@ if (fs.existsSync(config.output) && !fs.lstatSync(config.output).isDirectory()) 
   throw 'Output path is not a directory'
 }
 
+if ('build' in jsConfig && typeof jsConfig.build === 'function') {
+  await jsConfig.build()
+}
+
 for await (const filePath of getFiles(config.src)) {
   let testPath = path.join(config.src, path.relative(config.src, filePath)).replace(reWinDirSep, '/')
-  if (customMatch(testPath)) {
+  const customMatchIdx = customMatch(testPath)
+  if (typeof customMatchIdx === 'number') {
     const outPath = path.join(config.output, path.relative(config.src, filePath))
     if (!fs.existsSync(path.dirname(outPath))) {
       fs.mkdirSync(path.dirname(outPath), { recursive: true })
     }
-    fs.writeFileSync(outPath, await jsConfig.buildHandle(filePath, config, {
+    fs.writeFileSync(outPath, await jsConfig.buildFile[customMatchIdx].process(filePath, config, {
       processPug,
       processStylus,
       uglifyJS
