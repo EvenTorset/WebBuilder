@@ -98,7 +98,11 @@ if (fs.existsSync(config.output) && !fs.lstatSync(config.output).isDirectory()) 
 }
 
 if ('build' in jsConfig && typeof jsConfig.build === 'function') {
-  await jsConfig.build()
+  await jsConfig.build(config, {
+    processPug,
+    processStylus,
+    uglifyJS
+  })
 }
 
 for await (const filePath of getFiles(config.src)) {
