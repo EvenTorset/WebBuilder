@@ -5,12 +5,16 @@ import path from 'node:path'
 import http from 'node:http'
 import stream from 'node:stream'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import child_process from 'node:child_process'
 
 import WebSocket, { WebSocketServer } from 'ws'
 import pug from 'pug'
 import stylus from 'stylus'
 import mime from 'mime-types'
 import chokidar from 'chokidar'
+import { minify } from 'terser'
+
+import processTaggedTemplates from './tagged_templates.js'
 
 let config = {
   port: 8080,
@@ -26,12 +30,13 @@ if (fs.existsSync('package.json')) {
 
 const wss = new WebSocketServer({ port: 35789 })
 
-let jsConfig
+let jsConfig = {}
 if (fs.existsSync('./webbuilder.config.js')) {
   jsConfig = (await import(pathToFileURL(path.resolve('./webbuilder.config.js')))).default
 }
 
 const reWinDirSep = /\\/g
+const reJSExt = /\.[mc]?js$/
 
 chokidar.watch(config.watch ?? config.src, {
   awaitWriteFinish: {
@@ -52,6 +57,67 @@ chokidar.watch(config.watch ?? config.src, {
     })
   }
 })
+
+function processPug(s, filePath) {
+  return pug.render(s, Object.assign({
+    filename: filePath,
+    basedir: config.src,
+    self: true,
+    filters: {
+      styl(text, options) {
+        return processStylus(text, filePath)
+      },
+      uglify(text, options) {
+        return uglifyJSSync(text)
+      },
+      taggedTemplates(text, options) {
+        return processTaggedTemplates(text, filePath, {
+          processPug,
+          processStylus,
+          uglifyJS: uglifyJSSync
+        })
+      },
+      ...(jsConfig.pugFilters ?? {})
+    }
+  }, config.pugLocals))
+}
+
+function processStylus(s, filePath) {
+  return stylus.render(s, {
+    filename: filePath,
+    compress: true,
+    paths: [
+      path.resolve(path.dirname(filePath)),
+      path.resolve('.'),
+      ...(config.stylusPaths ?? [])
+    ]
+  })
+}
+
+const terserConfig = Object.assign({
+  ecma: 2020,
+  compress: {
+    keep_fargs: true,
+    keep_infinity: true,
+    reduce_funcs: false,
+    passes: config.uglifyPasses ?? 2
+  },
+  module: true
+}, typeof config.uglify === 'object' ? config.uglify : {})
+
+async function uglifyJS(s) {
+  return (await minify(s, terserConfig)).code
+}
+
+function uglifyJSSync(s) {
+  return child_process.execSync(
+    `node ${path.join(path.dirname(fileURLToPath(import.meta.url)), 'lib/minify-es6-sync.js')} -- "${JSON.stringify(terserConfig).replace(/["\\]/g, '\\$&')}"`, {
+    input: s,
+    encoding: 'utf-8',
+    maxBuffer: Infinity,
+    windowsHide: true,
+  })
+}
 
 function addReloadClient(html) {
   return html.replace('</head>', '<script type="module" src="/webbuilder_reload_client.js"></script></head>')
@@ -197,7 +263,7 @@ const server = http.createServer(async (req, res) => {
     fp += '.html'
   }
 
-  if (config.cloudflare_spa_router && (!fs.existsSync(fp) || fs.lstatSync(fp).isDirectory()) && !(fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) && !(fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug'))) {
+  if ((config.cloudflareSPARouter || config.cloudflare_spa_router) && (!fs.existsSync(fp) || fs.lstatSync(fp).isDirectory()) && !(fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) && !(fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug'))) {
     fp = path.join(config.src, 'index.html').replace(reWinDirSep, '/')
   }
 
@@ -205,31 +271,23 @@ const server = http.createServer(async (req, res) => {
     const customMatchIdx = customMatch(fp)
     if (typeof customMatchIdx === 'number') {
       sendFile(req, res, ...(await jsConfig.serveFile[customMatchIdx].process(fp, config)))
+    } else if (reJSExt.test(fp) && fs.existsSync(fp)) {
+      if (config.useTaggedTemplateReplacer) {
+        sendFile(req, res, processTaggedTemplates(fs.readFileSync(fp, 'utf-8'), fp, {
+          processPug,
+          processStylus,
+          uglifyJS: uglifyJSSync
+        }), 'text/javascript')
+      } else {
+        sendFile(req, res, fp)
+      }
     } else if (fs.existsSync(fp)) {
       sendFile(req, res, fp)
     } else if (fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug')) {
-      sendFile(req, res, addReloadClient(pug.render(fs.readFileSync(fp.slice(0, -5) + '.pug', 'utf-8'), Object.assign({
-        filename: filePath,
-        basedir: config.src,
-        self: true,
-        filters: {
-          styl(text, options) {
-            return stylus.render(text, {
-              filename: filePath
-            })
-          }
-        }
-      }, config.pugLocals))), 'text/html')
+      sendFile(req, res, addReloadClient(processPug(fs.readFileSync(fp.slice(0, -5) + '.pug', 'utf-8'), fp)), 'text/html')
     } else if (fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) {
       const sfp = fp.slice(0, -4) + '.styl'
-      sendFile(req, res, stylus.render(fs.readFileSync(sfp, 'utf-8'), {
-        filename: filePath,
-        paths: [
-          path.resolve(path.dirname(sfp)),
-          path.resolve('.'),
-          ...(config.stylusPaths ?? [])
-        ]
-      }), 'text/css')
+      sendFile(req, res, processStylus(fs.readFileSync(sfp, 'utf-8'), fp), 'text/css')
     } else {
       res.writeHead(404)
       res.end()

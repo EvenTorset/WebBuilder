@@ -2,15 +2,19 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import child_process from 'node:child_process'
 
 import pug from 'pug'
 import stylus from 'stylus'
 import { minify } from 'terser'
 
+import processTaggedTemplates from './tagged_templates.js'
+
 const config = {
   src: 'src',
-  output: 'dist'
+  output: 'dist',
+  uglify: true
 }
 if (fs.existsSync('package.json')) {
   const packageJSON = JSON.parse(fs.readFileSync('package.json', 'utf-8'))
@@ -19,12 +23,13 @@ if (fs.existsSync('package.json')) {
   }
 }
 
-let jsConfig
+let jsConfig = {}
 if (fs.existsSync('./webbuilder.config.js')) {
   jsConfig = (await import(pathToFileURL(path.resolve('./webbuilder.config.js')))).default
 }
 
 const reWinDirSep = /\\/g
+const reJSExt = /\.[mc]?js$/
 
 async function* getFiles(dir) {
   const dirents = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -64,7 +69,18 @@ function processPug(s, filePath) {
     filters: {
       styl(text, options) {
         return processStylus(text, filePath)
-      }
+      },
+      uglify(text, options) {
+        return uglifyJSSync(text)
+      },
+      taggedTemplates(text, options) {
+        return processTaggedTemplates(text, filePath, {
+          processPug,
+          processStylus,
+          uglifyJS: uglifyJSSync
+        })
+      },
+      ...(jsConfig.pugFilters ?? {})
     }
   }, config.pugLocals))
 }
@@ -81,16 +97,29 @@ function processStylus(s, filePath) {
   })
 }
 
+const terserConfig = Object.assign({
+  ecma: 2020,
+  compress: {
+    keep_fargs: true,
+    keep_infinity: true,
+    reduce_funcs: false,
+    passes: config.uglifyPasses ?? 2
+  },
+  module: true
+}, typeof config.uglify === 'object' ? config.uglify : {})
+
 async function uglifyJS(s) {
-  return (await minify(s, Object.assign({
-    ecma: 2020,
-    compress: {
-      keep_fargs: true,
-      keep_infinity: true,
-      reduce_funcs: false
-    },
-    module: true
-  }, typeof config.uglify === 'object' ? config.uglify : {}))).code
+  return (await minify(s, terserConfig)).code
+}
+
+function uglifyJSSync(s) {
+  return child_process.execSync(
+    `node ${path.join(path.dirname(fileURLToPath(import.meta.url)), 'lib/minify-es6-sync.js')} -- "${JSON.stringify(terserConfig).replace(/["\\]/g, '\\$&')}"`, {
+    input: s,
+    encoding: 'utf-8',
+    maxBuffer: Infinity,
+    windowsHide: true,
+  })
 }
 
 if (fs.existsSync(config.output) && !fs.lstatSync(config.output).isDirectory()) {
@@ -116,7 +145,12 @@ for await (const filePath of getFiles(config.src)) {
     fs.writeFileSync(outPath, await jsConfig.buildFile[customMatchIdx].process(filePath, config, {
       processPug,
       processStylus,
-      uglifyJS
+      uglifyJS,
+      processTaggedTemplates: (s, filePath) => processTaggedTemplates(s, filePath, {
+        processPug,
+        processStylus,
+        uglifyJS: uglifyJSSync
+      })
     }))
   } else if (path.extname(filePath) === '.pug') {
     const outPath = path.join(config.output, path.relative(config.src, filePath.slice(0, -3) + 'html'))
@@ -130,12 +164,27 @@ for await (const filePath of getFiles(config.src)) {
       fs.mkdirSync(path.dirname(outPath), { recursive: true })
     }
     fs.writeFileSync(outPath, processStylus(fs.readFileSync(filePath, 'utf-8'), filePath), 'utf-8')
-  } else if (config.uglify && path.extname(filePath) === '.js') {
+  } else if (reJSExt.test(filePath)) {
     const outPath = path.join(config.output, path.relative(config.src, filePath))
     if (!fs.existsSync(path.dirname(outPath))) {
       fs.mkdirSync(path.dirname(outPath), { recursive: true })
     }
-    fs.writeFileSync(outPath, await uglifyJS(fs.readFileSync(filePath, 'utf-8')), 'utf-8')
+    if (!config.uglify && !config.useTaggedTemplateReplacer) {
+      await fs.promises.copyFile(filePath, outPath)
+      continue
+    }
+    let js = fs.readFileSync(filePath, 'utf-8')
+    if (config.useTaggedTemplateReplacer) {
+      js = processTaggedTemplates(js, filePath, {
+        processPug,
+        processStylus,
+        uglifyJS
+      })
+    }
+    if (config.uglify) {
+      js = await uglifyJS(js)
+    }
+    fs.writeFileSync(outPath, js, 'utf-8')
   } else if (!config.keepJSON && path.extname(filePath) === '.json') {
     const outPath = path.join(config.output, path.relative(config.src, filePath))
     if (!fs.existsSync(path.dirname(outPath))) {
