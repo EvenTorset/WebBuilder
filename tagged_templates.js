@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { walk, AST_PrefixedTemplateString } from './node_modules/terser/lib/ast.js'
-import { parse } from './node_modules/terser/lib/parse.js'
+import { walk, AST_PrefixedTemplateString } from './lib/ast.js'
+import { parse } from './lib/parse.js'
 
 const shatter = (slicable, indices) => [0, ...indices].map((e, i, a) => slicable.slice(e, a[i + 1]))
 const escapeJSTL = s => s.replace(/[\\`]/g, '\\$&')
