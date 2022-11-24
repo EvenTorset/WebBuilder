@@ -37,13 +37,23 @@ if (fs.existsSync('./webbuilder.config.js')) {
 
 const reWinDirSep = /\\/g
 const reJSExt = /\.[mc]?js$/
+const rePathPartEnd = /^(?:\\|\/|$)/
+
+let isSoftReloadAllowed = fp => true
+if ('forceHardReload' in config) {
+  config.forceHardReload = config.forceHardReload.map(e => path.resolve(e))
+  isSoftReloadAllowed = fp => {
+    fp = path.resolve(fp)
+    return !config.forceHardReload.some(e => fp.startsWith(e) && rePathPartEnd.test(fp.slice(e.length)))
+  }
+}
 
 chokidar.watch(config.watch ?? config.src, {
   awaitWriteFinish: {
     stabilityThreshold: config.watchThreshold
   }
-}).on('all', async (evt, path) => {
-  if (path.match(/\.(css|styl)$/)) {
+}).on('all', async (evt, filePath) => {
+  if (filePath.match(/\.(css|styl)$/) && isSoftReloadAllowed(filePath)) {
     wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         client.send('reload css')
