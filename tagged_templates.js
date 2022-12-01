@@ -18,7 +18,7 @@ const webbuilderTags = new Set([
 function processTaggedTemplates(js, filePath, { processPug, processStylus }) {
   js = js.replace(/\r\n/g, '\n')
   const tts = []
-  walk(parse(js), token => {
+  walk(parse(js, { filename: filePath, module: true }), token => {
     if (token instanceof AST_PrefixedTemplateString && webbuilderTags.has(token.prefix.name)) {
       tts.push(token)
       return true
