@@ -174,7 +174,7 @@ async function sendFile(req, res, file, type) {
       })
     } else {
       if (file.endsWith('.html')) {
-        let content = addReloadClient(await fs.promises.readFile(file, 'utf-8'))
+        const content = Buffer.from(addReloadClient(await fs.promises.readFile(file, 'utf-8')), 'utf-8')
         res.writeHead(200, {
           'Content-Length': content.length,
           'Content-Type': 'text/html',
@@ -197,6 +197,9 @@ async function sendFile(req, res, file, type) {
       }
     }
   } else {
+    if (typeof file === 'string') {
+      file = Buffer.from(file, 'utf-8')
+    }
     if (req.headers.range) {
       const { start, end, err } = handleRange(req, res, file.length)
       if (err) return;
