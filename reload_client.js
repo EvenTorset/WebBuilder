@@ -28,7 +28,9 @@ socket.addEventListener('message', function (event) {
       }
     }
     for (const link of getExternalStyles()) {
-      link.setAttribute('href', newCSSURL(link.getAttribute('href')))
+      const old = link.getAttribute('href')
+      if (new URL(old, location.href).origin !== location.origin) continue;
+      link.setAttribute('href', newCSSURL(old))
     }
   }
 })
