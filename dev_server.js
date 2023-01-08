@@ -276,14 +276,29 @@ const server = http.createServer(async (req, res) => {
     fp += '.html'
   }
 
-  if ((config.cloudflareSPARouter || config.cloudflare_spa_router) && (!fs.existsSync(fp) || fs.lstatSync(fp).isDirectory()) && !(fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) && !(fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug'))) {
+  if (!(typeof customMatch(fp) === 'number') && (config.cloudflareSPARouter || config.cloudflare_spa_router) && (!fs.existsSync(fp) || fs.lstatSync(fp).isDirectory()) && !(fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) && !(fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug'))) {
     fp = path.join(config.src, 'index.html').replace(reWinDirSep, '/')
   }
 
   try {
     const customMatchIdx = customMatch(fp)
     if (typeof customMatchIdx === 'number') {
-      sendFile(req, res, ...(await jsConfig.serveFile[customMatchIdx].process(fp, config)))
+      const out = await jsConfig.serveFile[customMatchIdx].process?.(fp, config, {
+        processPug,
+        processStylus,
+        uglifyJS,
+        processTaggedTemplates: (s, filePath) => processTaggedTemplates(s, filePath, {
+          processPug,
+          processStylus,
+          uglifyJS: uglifyJSSync
+        })
+      })
+      if (out === undefined) {
+        res.writeHead(404)
+        res.end()
+        return
+      }
+      sendFile(req, res, ...out)
     } else if (reJSExt.test(fp) && fs.existsSync(fp)) {
       if (config.useTaggedTemplateReplacer) {
         sendFile(req, res, processTaggedTemplates(fs.readFileSync(fp, 'utf-8'), fp, {

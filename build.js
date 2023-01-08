@@ -138,11 +138,7 @@ for await (const filePath of getFiles(config.src)) {
   let testPath = path.join(config.src, path.relative(config.src, filePath)).replace(reWinDirSep, '/')
   const customMatchIdx = customMatch(testPath)
   if (typeof customMatchIdx === 'number') {
-    const outPath = path.join(config.output, path.relative(config.src, filePath))
-    if (!fs.existsSync(path.dirname(outPath))) {
-      fs.mkdirSync(path.dirname(outPath), { recursive: true })
-    }
-    fs.writeFileSync(outPath, await jsConfig.buildFile[customMatchIdx].process(filePath, config, {
+    const out = await jsConfig.buildFile[customMatchIdx].process?.(filePath, config, {
       processPug,
       processStylus,
       uglifyJS,
@@ -151,7 +147,19 @@ for await (const filePath of getFiles(config.src)) {
         processStylus,
         uglifyJS: uglifyJSSync
       })
-    }))
+    })
+    if (out === undefined) {
+      continue
+    }
+    const outPath = path.join(config.output, path.relative(config.src, filePath))
+    if (!fs.existsSync(path.dirname(outPath))) {
+      fs.mkdirSync(path.dirname(outPath), { recursive: true })
+    }
+    if (typeof out === 'string') {
+      fs.writeFileSync(outPath, out, 'utf-8')
+    } else {
+      fs.writeFileSync(outPath, out)
+    }
   } else if (path.extname(filePath) === '.pug') {
     const outPath = path.join(config.output, path.relative(config.src, filePath.slice(0, -3) + 'html'))
     if (!fs.existsSync(path.dirname(outPath))) {
