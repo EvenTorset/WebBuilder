@@ -12,7 +12,8 @@ import pug from 'pug'
 import stylus from 'stylus'
 import mime from 'mime-types'
 import chokidar from 'chokidar'
-import { minify } from 'terser'
+import { minify as minifyJS } from 'terser'
+import { minify as minifyCSS } from 'csso'
 
 import processTaggedTemplates from './tagged_templates.js'
 
@@ -93,7 +94,7 @@ function processPug(s, filePath) {
 }
 
 function processStylus(s, filePath) {
-  return stylus.render(s, {
+  return minifyCSS(stylus.render(s, {
     filename: filePath,
     compress: true,
     paths: [
@@ -101,7 +102,7 @@ function processStylus(s, filePath) {
       path.resolve('.'),
       ...(config.stylusPaths ?? [])
     ]
-  })
+  })).css
 }
 
 const terserConfig = Object.assign({
@@ -116,7 +117,7 @@ const terserConfig = Object.assign({
 }, typeof config.uglify === 'object' ? config.uglify : {})
 
 async function uglifyJS(s) {
-  return (await minify(s, terserConfig)).code
+  return (await minifyJS(s, terserConfig)).code
 }
 
 function uglifyJSSync(s) {

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "chokidar": "^3.5.3",
+    "csso": "^5.0.5",
     "mime-types": "^2.1.34",
     "pug": "^3.0.2",
     "stylus": "^0.59.0",

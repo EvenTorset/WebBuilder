@@ -7,7 +7,8 @@ import child_process from 'node:child_process'
 
 import pug from 'pug'
 import stylus from 'stylus'
-import { minify } from 'terser'
+import { minify as minifyJS } from 'terser'
+import { minify as minifyCSS } from 'csso'
 
 import processTaggedTemplates from './tagged_templates.js'
 
@@ -86,7 +87,7 @@ function processPug(s, filePath) {
 }
 
 function processStylus(s, filePath) {
-  return stylus.render(s, {
+  return minifyCSS(stylus.render(s, {
     filename: filePath,
     compress: true,
     paths: [
@@ -94,7 +95,7 @@ function processStylus(s, filePath) {
       path.resolve('.'),
       ...(config.stylusPaths ?? [])
     ]
-  })
+  })).css
 }
 
 const terserConfig = Object.assign({
@@ -109,7 +110,7 @@ const terserConfig = Object.assign({
 }, typeof config.uglify === 'object' ? config.uglify : {})
 
 async function uglifyJS(s) {
-  return (await minify(s, terserConfig)).code
+  return (await minifyJS(s, terserConfig)).code
 }
 
 function uglifyJSSync(s) {
@@ -172,6 +173,12 @@ for await (const filePath of getFiles(config.src)) {
       fs.mkdirSync(path.dirname(outPath), { recursive: true })
     }
     fs.writeFileSync(outPath, processStylus(fs.readFileSync(filePath, 'utf-8'), filePath), 'utf-8')
+  } else if (path.extname(filePath) === '.css') {
+    const outPath = path.join(config.output, path.relative(config.src, filePath))
+    if (!fs.existsSync(path.dirname(outPath))) {
+      fs.mkdirSync(path.dirname(outPath), { recursive: true })
+    }
+    fs.writeFileSync(outPath, minifyCSS(fs.readFileSync(filePath, 'utf-8')).css, 'utf-8')
   } else if (reJSExt.test(filePath)) {
     const outPath = path.join(config.output, path.relative(config.src, filePath))
     if (!fs.existsSync(path.dirname(outPath))) {
