@@ -89,7 +89,8 @@ function processPug(s, filePath) {
         })
       },
       ...(jsConfig.pugFilters ?? {})
-    }
+    },
+    env: 'dev'
   }, config.pugLocals))
 }
 
