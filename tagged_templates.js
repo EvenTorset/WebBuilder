@@ -5,14 +5,15 @@ import { walk, AST_PrefixedTemplateString } from './lib/ast.js'
 import { parse } from './lib/parse.js'
 
 const shatter = (slicable, indices) => [0, ...indices].map((e, i, a) => slicable.slice(e, a[i + 1]))
-const escapeJSTL = s => s.replace(/[\\`]/g, '\\$&')
+const escapeJSTL = s => s.replace(/[\\`]/g, '\\$&').replace(/\n/g, '\\n')
 
 const reNewLines = /\n/g
 const webbuilderTags = new Set([
   '_pug',
   '_styl',
   '_pugf',
-  '_stylf'
+  '_stylf',
+  '_txtf'
 ])
 
 function processTaggedTemplates(js, filePath, { processPug, processStylus }) {
@@ -67,6 +68,8 @@ function processTaggedTemplate(t, { processPug, processStylus }) {
       return `\`${escapeJSTL(processPug(fs.readFileSync(path.join('.', s), 'utf-8')))}\`${newlines(t)}`
     case '_stylf':
       return `\`${escapeJSTL(processStylus(fs.readFileSync(path.join('.', s), 'utf-8')))}\`${newlines(t)}`
+    case '_txtf':
+      return `\`${escapeJSTL(fs.readFileSync(path.join('.', s), 'utf-8'))}\`${newlines(t)}`
   }
 }
 
