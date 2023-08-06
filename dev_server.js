@@ -73,7 +73,12 @@ const customPugFilters = typeof jsConfig.pugFilters === 'function' ?
   jsConfig.pugFilters({
     processPug,
     processStylus,
-    uglifyJS: uglifyJSSync
+    uglifyJS: uglifyJSSync,
+    processTaggedTemplates: (s, filePath) => processTaggedTemplates(s, filePath, {
+      processPug,
+      processStylus,
+      uglifyJS: uglifyJSSync
+    })
   })
 :
   jsConfig.pugFilters ?? {}
