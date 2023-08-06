@@ -62,6 +62,15 @@ function customMatch(fileName) {
   return false
 }
 
+const customPugFilters = typeof jsConfig.pugFilters === 'function' ?
+  jsConfig.pugFilters({
+    processPug,
+    processStylus,
+    uglifyJS: uglifyJSSync
+  })
+:
+  jsConfig.pugFilters ?? {}
+
 function processPug(s, filePath) {
   return pug.render(s, Object.assign({
     filename: filePath,
@@ -81,7 +90,7 @@ function processPug(s, filePath) {
           uglifyJS: uglifyJSSync
         })
       },
-      ...(jsConfig.pugFilters ?? {})
+      ...customPugFilters
     },
     env: 'production'
   }, config.pugLocals))

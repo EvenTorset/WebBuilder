@@ -69,6 +69,15 @@ chokidar.watch(config.watch ?? config.src, {
   }
 })
 
+const customPugFilters = typeof jsConfig.pugFilters === 'function' ?
+  jsConfig.pugFilters({
+    processPug,
+    processStylus,
+    uglifyJS: uglifyJSSync
+  })
+:
+  jsConfig.pugFilters ?? {}
+
 function processPug(s, filePath) {
   return pug.render(s, Object.assign({
     filename: filePath,
@@ -88,7 +97,7 @@ function processPug(s, filePath) {
           uglifyJS: uglifyJSSync
         })
       },
-      ...(jsConfig.pugFilters ?? {})
+      ...customPugFilters
     },
     env: 'dev'
   }, config.pugLocals))
@@ -337,7 +346,7 @@ const server = http.createServer(async (req, res) => {
               .replace(/'/g, '&#039;')
           }</p>
         </body>
-      `.trim().replace(/^ {6}/g, '')
+      `.trim().replace(/^ {8}/g, '')
       res.writeHead(200, {
         'Content-Length': errHtml.length,
         'Content-Type': 'text/html',
