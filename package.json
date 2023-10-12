@@ -1,6 +1,6 @@
 {
   "name": "webbuilder",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "description": "Dev server and build tool for creating static websites using HTML/Pug, CSS/Stylus, and modern JS.",
   "bin": {

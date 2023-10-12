@@ -285,14 +285,20 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  let fp = path.join(config.src, filePath).replace(reWinDirSep, '/')
+  let fp = path.join(config.src, filePath).replace(reWinDirSep, '/').replace(/\/+$/, '')
   if (fs.existsSync(fp) && fs.lstatSync(fp).isDirectory()) {
     fp = path.join(fp, 'index.html').replace(reWinDirSep, '/')
-  } else if (!fs.existsSync(fp) && fs.existsSync(fp + '.html')) {
+  } else if (!fs.existsSync(fp) && (fs.existsSync(fp + '.html') || fs.existsSync(fp + '.pug'))) {
     fp += '.html'
   }
 
-  if (!(typeof customMatch(fp) === 'number') && (config.cloudflareSPARouter || config.cloudflare_spa_router) && (!fs.existsSync(fp) || fs.lstatSync(fp).isDirectory()) && !(fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) && !(fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug'))) {
+  if (
+    !(typeof customMatch(fp) === 'number') &&
+    (config.cloudflareSPARouter || config.cloudflare_spa_router) &&
+    (!fs.existsSync(fp) || fs.lstatSync(fp).isDirectory()) &&
+    !(fp.endsWith('.css') && fs.existsSync(fp.slice(0, -4) + '.styl')) &&
+    !(fp.endsWith('.html') && fs.existsSync(fp.slice(0, -5) + '.pug'))
+  ) {
     fp = path.join(config.src, 'index.html').replace(reWinDirSep, '/')
   }
 
